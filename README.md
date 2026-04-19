@@ -73,8 +73,22 @@ A window is "good" when its hourly score stays above `min_score` for at least
 | `GET /conditions?location=X&when=today` | Hour-by-hour scored forecast |
 | `GET /tides?location=X&when=this-week` | High/low tide predictions |
 | `GET /marine?location=X` | Raw NWS zone forecasts with extracted hazards |
+| `GET /calendar.ics?location=X&min_verdict=maybe` | Subscribable ICS feed of sail windows |
 
 `when` accepts: `today`, `tomorrow`, `this-week`, or an ISO date `2026-05-10`.
+
+### Sharing via Google Calendar (no OAuth)
+
+Once the API is exposed on a public URL (Lightsail, Caddy/Tailscale, etc.),
+share this with friends:
+
+```
+https://<your-host>/calendar.ics?location=kings_point&location=new_london&min_verdict=maybe&days=10
+```
+
+In Google Calendar → **Other calendars → +** → **From URL**, paste the link.
+Events refresh on Google's schedule (typically several hours). UIDs are stable
+so existing events update in place rather than duplicating.
 
 ### Example: using it from an agent
 

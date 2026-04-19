@@ -76,3 +76,24 @@ def test_summary_shape(client):
     body = r.json()
     assert body["verdict"] in {"go", "maybe", "no-go", "no-data"}
     assert body["location_id"] == "kings_point"
+
+
+def test_calendar_ics_serves_text_calendar(client):
+    r = client.get("/calendar.ics", params={"location": "kings_point", "days": 1})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/calendar")
+    body = r.text
+    assert body.startswith("BEGIN:VCALENDAR")
+    assert "END:VCALENDAR" in body
+    # Seeded data is steady 12kt wind, so at least one window should be emitted.
+    assert "BEGIN:VEVENT" in body
+    assert "Kings Point" in body
+
+
+def test_calendar_ics_multi_location(client):
+    r = client.get(
+        "/calendar.ics",
+        params=[("location", "kings_point"), ("location", "bridgeport"), ("days", 1)],
+    )
+    assert r.status_code == 200
+    assert r.text.startswith("BEGIN:VCALENDAR")

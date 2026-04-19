@@ -4,10 +4,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .calendar_ics import build_calendar, verdict_for_window
 from .config import Location as LocationCfg
 from .config import get_location, load_locations, load_rules
 from .db import get_sessionmaker
@@ -267,6 +269,63 @@ def tides(
         q = q.where(TidePrediction.type.isnot(None))
     rows = db.execute(q).scalars().all()
     return [TideOut(t=r.t, height_m=r.height_m, type=r.type) for r in rows]
+
+
+@app.get(
+    "/calendar.ics",
+    responses={200: {"content": {"text/calendar": {}}}},
+)
+def calendar_ics(
+    location: list[str] = Query(
+        ..., description="Location id(s). Repeat the param for multi-location calendars."
+    ),
+    days: int = Query(7, ge=1, le=14, description="Lookahead in days."),
+    min_verdict: Literal["maybe", "go"] = Query(
+        "maybe", description="Drop windows weaker than this verdict."
+    ),
+    include_tides: bool = Query(False, description="Add high/low tide events."),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Subscribable ICS feed. Add the URL to Google Calendar → 'From URL'."""
+    rules = load_rules()
+    now = datetime.now(timezone.utc)
+    start = now.replace(minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=days)
+
+    windows_out: list[tuple[LocationCfg, SailWindow, str]] = []
+    tides_out: list[tuple[LocationCfg, datetime, float, str]] = []
+
+    for loc_id in location:
+        loc = get_location(loc_id)
+        reports = score_range(db, loc, start, end, rules)
+        for w in find_windows(reports, rules):
+            v = verdict_for_window(w)
+            if min_verdict == "go" and v != "go":
+                continue
+            windows_out.append((loc, w, v))
+
+        if include_tides:
+            rows = db.execute(
+                select(TidePrediction)
+                .where(TidePrediction.location_id == loc.id)
+                .where(TidePrediction.type.isnot(None))
+                .where(TidePrediction.t >= start)
+                .where(TidePrediction.t < end)
+                .order_by(TidePrediction.t)
+            ).scalars().all()
+            for r in rows:
+                t = r.t if r.t.tzinfo else r.t.replace(tzinfo=timezone.utc)
+                tides_out.append((loc, t, r.height_m, r.type or ""))
+
+    body = build_calendar(
+        locations_and_windows=windows_out,
+        tide_events=tides_out,
+    )
+    return Response(
+        content=body,
+        media_type="text/calendar",
+        headers={"Content-Disposition": 'inline; filename="sail-soon.ics"'},
+    )
 
 
 @app.get("/marine", response_model=list[dict])
