@@ -1,0 +1,49 @@
+# Long Island Sound sailing locations.
+# Each location bundles a NOAA tide station, an NWS marine zone, and a lat/lon
+# used for Open-Meteo wind/wave/precip queries.
+#
+# Tide station IDs: https://tidesandcurrents.noaa.gov/stations.html
+# NWS marine zones: https://www.weather.gov/marine/zone/eastpac
+#   ANZ330 = Long Island Sound West of New Haven CT
+#   ANZ335 = Long Island Sound East of New Haven CT
+
+locations:
+  - id: kings_point
+    name: "Kings Point, NY (Western LIS)"
+    tide_station: "8516945"
+    marine_zone: "ANZ330"
+    latitude: 40.811
+    longitude: -73.765
+    timezone: "America/New_York"
+
+  - id: bridgeport
+    name: "Bridgeport, CT"
+    tide_station: "8467150"
+    marine_zone: "ANZ330"
+    latitude: 41.175
+    longitude: -73.182
+    timezone: "America/New_York"
+
+  - id: new_haven
+    name: "New Haven, CT"
+    tide_station: "8465705"
+    marine_zone: "ANZ335"
+    latitude: 41.283
+    longitude: -72.908
+    timezone: "America/New_York"
+
+  - id: new_london
+    name: "New London, CT (Eastern LIS)"
+    tide_station: "8461490"
+    marine_zone: "ANZ335"
+    latitude: 41.355
+    longitude: -72.087
+    timezone: "America/New_York"
+
+  - id: montauk
+    name: "Montauk, NY (LIS eastern mouth)"
+    tide_station: "8510560"
+    marine_zone: "ANZ350"
+    latitude: 41.048
+    longitude: -71.959
+    timezone: "America/New_York"

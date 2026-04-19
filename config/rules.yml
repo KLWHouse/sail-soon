@@ -1,0 +1,59 @@
+# Sail-condition rules. Each rule is checked per hour; the overall score is the
+# weighted sum of rule scores in [0, 1]. A window is "good" when its hourly
+# score stays above `min_score` for at least `min_duration_hours` consecutive
+# hours inside `daylight_window` (sunrise-ish to sunset-ish).
+#
+# Tweak freely — nothing in the ingester depends on these values, so re-scoring
+# is cheap: just change the file and re-hit the API.
+
+profile: "default_daysail"
+
+daylight_window:
+  sunrise_buffer_minutes: 30   # don't start before sunrise + 30 min
+  sunset_buffer_minutes: -30   # don't end after sunset - 30 min
+
+min_score: 0.6
+min_duration_hours: 3
+
+rules:
+  wind_speed:
+    # Wind speed at 10m, knots. Triangle scoring: ramps up 5->8, flat 8->18,
+    # ramps down 18->22, zero outside.
+    type: trapezoid
+    source: wind_speed_kt
+    low_zero: 5
+    low_full: 8
+    high_full: 18
+    high_zero: 22
+    weight: 3.0
+
+  wind_gust:
+    # Hard cap on gusts.
+    type: ceiling
+    source: wind_gust_kt
+    warn_at: 20
+    fail_at: 28
+    weight: 2.0
+
+  wave_height:
+    # Combined wave height in meters.
+    type: ceiling
+    source: wave_height_m
+    warn_at: 0.8
+    fail_at: 1.5
+    weight: 1.5
+
+  precipitation:
+    # Probability of precip, percent.
+    type: ceiling
+    source: precip_prob_pct
+    warn_at: 30
+    fail_at: 70
+    weight: 1.0
+
+  small_craft_advisory:
+    # Kill the score if NWS marine zone has a small craft advisory this hour.
+    type: nws_hazard
+    source: hazards
+    fail_on: ["Small Craft Advisory", "Gale Warning", "Storm Warning"]
+    weight: 5.0
