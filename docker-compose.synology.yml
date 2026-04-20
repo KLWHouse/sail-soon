@@ -1,0 +1,23 @@
+# Synology NAS override. Copy to docker-compose.override.yml next to
+# docker-compose.yml before bringing the stack up:
+#
+#   cp docker-compose.synology.yml docker-compose.override.yml
+#
+# See docs/deploy-synology.md for the full walkthrough.
+
+services:
+  db:
+    volumes:
+      - /volume1/docker/sail-soon/pgdata:/var/lib/postgresql/data
+
+  api:
+    # Bind to loopback on the NAS; DSM's reverse proxy forwards from :443 to
+    # :8765. Drop the "127.0.0.1:" prefix if you want LAN access without a
+    # reverse proxy.
+    ports:
+      - "127.0.0.1:8765:8000"
+    environment:
+      # NWS rejects generic UAs. Put a real contact email here.
+      SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"
+
+  ingest: {}

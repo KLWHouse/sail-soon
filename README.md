@@ -31,7 +31,7 @@ uvicorn sailsoon.api:app --reload
 open http://localhost:8000/docs
 ```
 
-### Production with Postgres (Lightsail or Synology)
+### Production with Postgres
 
 ```bash
 docker compose up -d --build
@@ -40,8 +40,13 @@ docker compose up -d --build
 The `api` container runs migrations, syncs locations, and serves on :8000.
 The `ingest` container re-pulls forecasts every hour.
 
-Point Caddy/Traefik/Nginx Proxy Manager at `api:8000` to expose a public URL
-(Lightsail) or keep it behind Tailscale (Synology).
+Deploy targets:
+
+- **Synology NAS** — full walkthrough in [docs/deploy-synology.md](docs/deploy-synology.md).
+  Copy `docker-compose.synology.yml` to `docker-compose.override.yml` before
+  bringing the stack up.
+- **Lightsail / generic VPS** — bring up the default compose file behind
+  Caddy/Traefik/Nginx Proxy Manager for TLS.
 
 ## Configuration
 
