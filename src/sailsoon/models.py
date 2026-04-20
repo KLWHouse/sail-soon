@@ -100,3 +100,17 @@ class HourlyForecast(Base):
         UniqueConstraint("location_id", "t", name="uq_hourly_location_time"),
         Index("ix_hourly_location_t", "location_id", "t"),
     )
+
+
+class Profile(Base):
+    """User-editable filter preset. No login; mutations are gated by a token
+    returned at creation time."""
+
+    __tablename__ = "profiles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # slug
+    name: Mapped[str] = mapped_column(String(255))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    token_hash: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

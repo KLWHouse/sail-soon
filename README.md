@@ -74,8 +74,48 @@ A window is "good" when its hourly score stays above `min_score` for at least
 | `GET /tides?location=X&when=this-week` | High/low tide predictions |
 | `GET /marine?location=X` | Raw NWS zone forecasts with extracted hazards |
 | `GET /calendar.ics?location=X&min_verdict=maybe` | Subscribable ICS feed of sail windows |
+| `POST /profiles` | Create a named filter profile (returns one-time edit token) |
+| `GET /profiles` / `GET /profiles/{id}` | List / read profiles |
+| `PUT /profiles/{id}` (header `X-Edit-Token`) | Update profile |
+| `DELETE /profiles/{id}` (header `X-Edit-Token`) | Delete profile |
 
 `when` accepts: `today`, `tomorrow`, `this-week`, or an ISO date `2026-05-10`.
+
+## Profiles — per-friend filters
+
+Friends can save their own preferred locations and condition thresholds without
+needing an account. Profiles are a shareable preset: anyone who knows the
+profile id can use it; only holders of the `edit_token` returned at creation
+can modify it.
+
+```bash
+# Create a profile
+curl -X POST http://<host>/profiles -H 'content-type: application/json' -d '{
+  "id": "brian-dinghy",
+  "name": "Brian dinghy (light-air happy)",
+  "config": {
+    "locations": ["kings_point", "new_haven"],
+    "min_score": 0.55,
+    "min_duration_hours": 2,
+    "rule_overrides": {
+      "wind_speed": {"low_zero": 4, "low_full": 7, "high_full": 15, "high_zero": 20},
+      "wave_height": {"warn_at": 0.5, "fail_at": 1.0}
+    },
+    "min_verdict": "maybe",
+    "include_tides": true
+  }
+}'
+# => { "id": "brian-dinghy", ..., "edit_token": "SAVE-THIS" }
+```
+
+Then any endpoint accepts `?profile=brian-dinghy`:
+
+- `GET /summary/tomorrow?profile=brian-dinghy`
+- `GET /sail-windows?profile=brian-dinghy&when=this-week`
+- `GET /calendar.ics?profile=brian-dinghy` (subscribe this URL in Google Calendar)
+
+Explicit query params still win — passing `?profile=brian-dinghy&location=new_london`
+uses Brian's rules against New London, ignoring his default locations.
 
 ### Sharing via Google Calendar (no OAuth)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -11,9 +11,22 @@ from sqlalchemy.orm import Session
 
 from .calendar_ics import build_calendar, verdict_for_window
 from .config import Location as LocationCfg
-from .config import get_location, load_locations, load_rules
+from .config import RuleSet, get_location, load_locations, load_rules
 from .db import get_sessionmaker
 from .models import MarineForecast, TidePrediction
+from .profiles import (
+    ProfileConfig,
+    ProfileCreated,
+    ProfileIn,
+    ProfileOut,
+    ProfileUpdate,
+    create_profile,
+    delete_profile,
+    effective_ruleset,
+    get_profile,
+    list_profiles,
+    update_profile,
+)
 from .scoring import (
     HourReport,
     SailWindow,
@@ -184,6 +197,35 @@ def _verdict(windows: list[SailWindow]) -> tuple[Literal["go", "maybe", "no-go",
     return "no-go", f"Best available was weak: {_window_summary(best)}"
 
 
+def _resolve_context(
+    session: Session,
+    profile_id: str | None,
+    locations: list[str] | None,
+) -> tuple[list[LocationCfg], RuleSet, ProfileConfig | None]:
+    """Figure out which locations + ruleset to use.
+
+    Precedence: explicit `location` query params always win. If a profile is
+    named, its locations are the default and its rule overrides are merged
+    on top of the base `rules.yml`.
+    """
+    profile_cfg: ProfileConfig | None = None
+    if profile_id:
+        row = get_profile(session, profile_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"profile '{profile_id}' not found")
+        profile_cfg = ProfileConfig(**(row.config or {}))
+
+    loc_ids = locations or (profile_cfg.locations if profile_cfg else [])
+    if not loc_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="No location specified. Pass `location=...` or a profile with locations.",
+        )
+    resolved = [get_location(l) for l in loc_ids]
+    rules = effective_ruleset(profile_cfg)
+    return resolved, rules, profile_cfg
+
+
 # ---------- endpoints ----------
 
 
@@ -199,25 +241,28 @@ def locations() -> list[LocationOut]:
 
 @app.get("/conditions", response_model=list[HourOut])
 def conditions(
-    location: str = Query(..., description="Location id, e.g. 'kings_point'."),
+    location: str | None = Query(None, description="Location id, e.g. 'kings_point'."),
+    profile: str | None = Query(None, description="Profile id (supplies location + rule overrides)."),
     when: str = Query("today", description="today | tomorrow | this-week | YYYY-MM-DD"),
     db: Session = Depends(get_db),
 ) -> list[HourOut]:
-    loc = get_location(location)
+    locs, rules, _ = _resolve_context(db, profile, [location] if location else None)
+    loc = locs[0]  # single-location endpoint
     start, end, _ = _resolve_when(when, loc)
-    reports = score_range(db, loc, start, end)
+    reports = score_range(db, loc, start, end, rules)
     return [HourOut.from_report(r) for r in reports]
 
 
 @app.get("/sail-windows", response_model=list[WindowOut])
 def sail_windows(
-    location: str = Query(..., description="Location id."),
+    location: str | None = Query(None, description="Location id."),
+    profile: str | None = Query(None, description="Profile id."),
     when: str = Query("this-week"),
     db: Session = Depends(get_db),
 ) -> list[WindowOut]:
-    """Return every contiguous span of daylight hours meeting the score threshold."""
-    loc = get_location(location)
-    rules = load_rules()
+    """Every contiguous span of daylight hours meeting the (per-profile) score threshold."""
+    locs, rules, _ = _resolve_context(db, profile, [location] if location else None)
+    loc = locs[0]
     start, end, _ = _resolve_when(when, loc)
     reports = score_range(db, loc, start, end, rules)
     windows = find_windows(reports, rules)
@@ -228,12 +273,13 @@ def sail_windows(
 @app.get("/summary/{when}", response_model=DaySummary)
 def summary(
     when: str,
-    location: str = Query(..., description="Location id."),
+    location: str | None = Query(None, description="Location id."),
+    profile: str | None = Query(None, description="Profile id."),
     db: Session = Depends(get_db),
 ) -> DaySummary:
     """High-level verdict for a day. Ideal for an agent answering 'is X good?'."""
-    loc = get_location(location)
-    rules = load_rules()
+    locs, rules, _ = _resolve_context(db, profile, [location] if location else None)
+    loc = locs[0]
     start, end, label = _resolve_when(when, loc)
     reports = score_range(db, loc, start, end, rules)
     windows = find_windows(reports, rules)
@@ -276,35 +322,43 @@ def tides(
     responses={200: {"content": {"text/calendar": {}}}},
 )
 def calendar_ics(
-    location: list[str] = Query(
-        ..., description="Location id(s). Repeat the param for multi-location calendars."
+    location: list[str] | None = Query(
+        None, description="Location id(s). Repeat for multi-location calendars."
     ),
-    days: int = Query(7, ge=1, le=14, description="Lookahead in days."),
-    min_verdict: Literal["maybe", "go"] = Query(
-        "maybe", description="Drop windows weaker than this verdict."
+    profile: str | None = Query(None, description="Profile id (supplies locations + rule overrides)."),
+    days: int | None = Query(None, ge=1, le=14, description="Lookahead in days."),
+    min_verdict: Literal["maybe", "go"] | None = Query(
+        None, description="Drop windows weaker than this verdict."
     ),
-    include_tides: bool = Query(False, description="Add high/low tide events."),
+    include_tides: bool | None = Query(None, description="Add high/low tide events."),
     db: Session = Depends(get_db),
 ) -> Response:
     """Subscribable ICS feed. Add the URL to Google Calendar → 'From URL'."""
-    rules = load_rules()
+    locs, rules, profile_cfg = _resolve_context(db, profile, location)
+
+    # Profile supplies defaults; explicit query params override.
+    eff_days = days if days is not None else 7
+    eff_min_verdict = min_verdict or (profile_cfg.min_verdict if profile_cfg else None) or "maybe"
+    eff_include_tides = include_tides if include_tides is not None else (
+        profile_cfg.include_tides if profile_cfg else False
+    )
+
     now = datetime.now(timezone.utc)
     start = now.replace(minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=days)
+    end = start + timedelta(days=eff_days)
 
     windows_out: list[tuple[LocationCfg, SailWindow, str]] = []
     tides_out: list[tuple[LocationCfg, datetime, float, str]] = []
 
-    for loc_id in location:
-        loc = get_location(loc_id)
+    for loc in locs:
         reports = score_range(db, loc, start, end, rules)
         for w in find_windows(reports, rules):
             v = verdict_for_window(w)
-            if min_verdict == "go" and v != "go":
+            if eff_min_verdict == "go" and v != "go":
                 continue
             windows_out.append((loc, w, v))
 
-        if include_tides:
+        if eff_include_tides:
             rows = db.execute(
                 select(TidePrediction)
                 .where(TidePrediction.location_id == loc.id)
@@ -326,6 +380,85 @@ def calendar_ics(
         media_type="text/calendar",
         headers={"Content-Disposition": 'inline; filename="sail-soon.ics"'},
     )
+
+
+# ---------- profiles ----------
+
+
+@app.post("/profiles", response_model=ProfileCreated, status_code=201)
+def create_profile_endpoint(payload: ProfileIn, db: Session = Depends(get_db)) -> ProfileCreated:
+    """Create a new filter profile. Response includes a one-time `edit_token` —
+    save it somewhere safe; you'll need it to edit or delete."""
+    # Validate that referenced locations exist.
+    for l in payload.config.locations:
+        try:
+            get_location(l)
+        except KeyError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+    try:
+        created = create_profile(db, payload)
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    db.commit()
+    return created
+
+
+@app.get("/profiles", response_model=list[ProfileOut])
+def list_profiles_endpoint(db: Session = Depends(get_db)) -> list[ProfileOut]:
+    return list_profiles(db)
+
+
+@app.get("/profiles/{profile_id}", response_model=ProfileOut)
+def get_profile_endpoint(profile_id: str, db: Session = Depends(get_db)) -> ProfileOut:
+    row = get_profile(db, profile_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return ProfileOut(
+        id=row.id,
+        name=row.name,
+        config=ProfileConfig(**(row.config or {})),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@app.put("/profiles/{profile_id}", response_model=ProfileOut)
+def update_profile_endpoint(
+    profile_id: str,
+    patch: ProfileUpdate,
+    db: Session = Depends(get_db),
+    x_edit_token: str = Header(..., alias="X-Edit-Token"),
+) -> ProfileOut:
+    if patch.config is not None:
+        for l in patch.config.locations:
+            try:
+                get_location(l)
+            except KeyError as err:
+                raise HTTPException(status_code=400, detail=str(err)) from err
+    try:
+        out = update_profile(db, profile_id, x_edit_token, patch)
+    except KeyError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except PermissionError as err:
+        raise HTTPException(status_code=403, detail=str(err)) from err
+    db.commit()
+    return out
+
+
+@app.delete("/profiles/{profile_id}", status_code=204)
+def delete_profile_endpoint(
+    profile_id: str,
+    db: Session = Depends(get_db),
+    x_edit_token: str = Header(..., alias="X-Edit-Token"),
+) -> Response:
+    try:
+        delete_profile(db, profile_id, x_edit_token)
+    except KeyError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except PermissionError as err:
+        raise HTTPException(status_code=403, detail=str(err)) from err
+    db.commit()
+    return Response(status_code=204)
 
 
 @app.get("/marine", response_model=list[dict])

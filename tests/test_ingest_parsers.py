@@ -8,18 +8,19 @@ import pytest
 import respx
 from httpx import Response
 
-os.environ.setdefault("SAILSOON_DATABASE_URL", "sqlite:///./_test_parsers.db")
-
-
 @pytest.fixture(autouse=True)
 def _setup_db():
+    from sailsoon import config as config_module
     from sailsoon import db as db_module
+
+    db_path = "./_test_parsers.db"
+    os.environ["SAILSOON_DATABASE_URL"] = f"sqlite:///{db_path}"
+    config_module.get_settings.cache_clear()
     if db_module._engine is not None:
         db_module._engine.dispose()
     db_module._engine = None
     db_module._SessionLocal = None
 
-    db_path = "./_test_parsers.db"
     if os.path.exists(db_path):
         os.remove(db_path)
 

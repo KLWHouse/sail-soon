@@ -7,15 +7,16 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["SAILSOON_DATABASE_URL"] = "sqlite:///./_test_sailsoon.db"
-
-
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
     # Clean DB per run.
     db_path = "./_test_sailsoon.db"
+    os.environ["SAILSOON_DATABASE_URL"] = f"sqlite:///{db_path}"
     if os.path.exists(db_path):
         os.remove(db_path)
+
+    from sailsoon import config as config_module
+    config_module.get_settings.cache_clear()
 
     from sailsoon.db import get_engine
     from sailsoon.models import Base
