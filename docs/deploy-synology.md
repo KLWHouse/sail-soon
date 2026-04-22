@@ -14,7 +14,7 @@ Pick one before you start; the rest of the guide branches on this:
   fetches from Google's servers — so for **public ICS sharing you still need
   option B** (or Tailscale Funnel, which is basically option B anyway).
 - **DSM Reverse Proxy + DDNS + Let's Encrypt (public URL).** Friends get a
-  real `https://sail.example.com` they can paste into Google Calendar. Slightly
+  real `https://sail.i234.me` they can paste into Google Calendar. Slightly
   more setup but this is what you want if ICS subscription is the goal.
 
 ## 1. Prepare directories on the NAS
@@ -143,7 +143,7 @@ sudo docker compose logs --tail=50 ingest
    |-------|-------|
    | Description | sail-soon |
    | Source Protocol | HTTPS |
-   | Source Hostname | `sail.example.com` (your actual hostname) |
+   | Source Hostname | `sail.i234.me` |
    | Source Port | 443 |
    | Destination Protocol | HTTP |
    | Destination Hostname | localhost |
@@ -158,10 +158,10 @@ sudo docker compose logs --tail=50 ingest
    | Field | Value |
    |-------|-------|
    | Source Protocol | HTTP |
-   | Source Hostname | `sail.example.com` |
+   | Source Hostname | `sail.i234.me` |
    | Source Port | 80 |
    | Destination Protocol | HTTPS |
-   | Destination Hostname | sail.example.com |
+   | Destination Hostname | sail.i234.me |
    | Destination Port | 443 |
 
    > DSM's "Redirect" mode is not exposed in the reverse-proxy UI; the
@@ -183,18 +183,18 @@ sudo docker compose logs --tail=50 ingest
 
 ```bash
 # From your laptop / phone, not the NAS itself:
-curl -v https://sail.example.com/health
+curl -v https://sail.i234.me/health
 # Expect: {"status":"ok"}  with TLS handshake shown in -v output
 
 # Confirm HTTP redirects to HTTPS:
-curl -I http://sail.example.com/health
+curl -I http://sail.i234.me/health
 # Expect: HTTP/1.1 301 (or 302) with Location: https://...
 
 # Check the cert is valid and issued by Let's Encrypt:
-curl -v https://sail.example.com/health 2>&1 | grep -E 'issuer|subject'
+curl -v https://sail.i234.me/health 2>&1 | grep -E 'issuer|subject'
 ```
 
-Now `https://sail.example.com/calendar.ics?profile=brian-dinghy` is the URL
+Now `https://sail.i234.me/calendar.ics?profile=brian-dinghy` is the URL
 friends paste into Google Calendar → **Other calendars → + → From URL**.
 
 ## 7. Creating profiles for friends
@@ -202,7 +202,7 @@ friends paste into Google Calendar → **Other calendars → + → From URL**.
 Once HTTPS is up:
 
 ```bash
-curl -X POST https://sail.example.com/profiles \
+curl -X POST https://sail.i234.me/profiles \
   -H 'content-type: application/json' \
   -d '{
     "id": "brian-dinghy",
@@ -219,7 +219,7 @@ curl -X POST https://sail.example.com/profiles \
 # => {"id":"brian-dinghy", ..., "edit_token":"SAVE-THIS-LOCALLY"}
 ```
 
-Share `https://sail.example.com/calendar.ics?profile=brian-dinghy` with Brian;
+Share `https://sail.i234.me/calendar.ics?profile=brian-dinghy` with Brian;
 keep the `edit_token` somewhere you can find it (1Password, a pinned note).
 
 ## 8. Upgrades
