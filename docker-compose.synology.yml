@@ -22,8 +22,16 @@ services:
     # reverse proxy.
     ports:
       - "127.0.0.1:8765:8000"
+    # --proxy-headers tells uvicorn to trust X-Forwarded-Proto/For from DSM's
+    # reverse proxy so the app sees the real client IP and scheme (https).
+    # --forwarded-allow-ips=* is safe here because the port is loopback-only.
+    command: >
+      sh -c "alembic upgrade head && sailsoon sync &&
+             uvicorn sailsoon.api:app --host 0.0.0.0 --port 8000
+             --proxy-headers --forwarded-allow-ips='*'"
     environment:
       # NWS rejects generic UAs. Put a real contact email here.
       SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"
 
-  ingest: {}
+  ingest:
+    restart: unless-stopped

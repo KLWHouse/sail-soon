@@ -121,23 +121,78 @@ sudo docker compose logs --tail=50 ingest
 
 ## 6B. Share via DSM Reverse Proxy + HTTPS
 
+### Step-by-step
+
 1. **DDNS:** Control Panel → External Access → DDNS → **Add**. Synology
-   provides free `*.synology.me` hostnames, or bring your own domain.
-2. **Router port-forward:** forward **TCP 443** (and optionally **80** for
-   cert renewal) on your router to the NAS. Leave DSM 5000/5001 **not**
-   forwarded.
+   provides free `*.synology.me` hostnames, or bring your own domain and add
+   it as a CNAME/A to your router's WAN IP.
+
+2. **Router port-forwards:** forward both **TCP 80** and **TCP 443** from your
+   router's WAN to the NAS LAN IP. Port 80 is required for the Let's Encrypt
+   HTTP-01 ACME challenge — without it the cert request fails.
+   Leave DSM ports 5000/5001 **not** forwarded.
+
 3. **Let's Encrypt cert:** Control Panel → Security → Certificate → **Add** →
-   **Add a new certificate** → **Get a certificate from Let's Encrypt**. Use
-   your DDNS hostname.
-4. **Reverse proxy rule:** Control Panel → Login Portal → Advanced → Reverse
-   Proxy → **Create**:
-   - Source: `https://sail.example.com` on port **443**
-   - Destination: `http://localhost` on port **8765**
-   - Custom header → WebSocket (optional; FastAPI docs UI is fine without).
-5. **Assign the cert** to that reverse-proxy hostname under
-   Control Panel → Security → Certificate → **Settings**.
-6. DSM Firewall (Control Panel → Security → Firewall): allow TCP 443; deny
-   everything else you don't need.
+   **Add a new certificate** → **Get a certificate from Let's Encrypt**. Enter
+   your DDNS/custom hostname. DSM will spin up a temporary HTTP listener on
+   port 80 to complete the challenge; it renews automatically every 90 days.
+
+4. **HTTPS reverse-proxy rule:** Control Panel → Login Portal → Advanced →
+   Reverse Proxy → **Create**:
+   | Field | Value |
+   |-------|-------|
+   | Description | sail-soon |
+   | Source Protocol | HTTPS |
+   | Source Hostname | `sail.example.com` (your actual hostname) |
+   | Source Port | 443 |
+   | Destination Protocol | HTTP |
+   | Destination Hostname | localhost |
+   | Destination Port | 8765 |
+
+   Then open the **Custom Header** tab and click **Create → WebSocket**. This
+   adds `Upgrade` and `Connection` headers — required for the `/docs` live-
+   reload to work correctly over HTTPS.
+
+5. **HTTP → HTTPS redirect rule:** Add a second reverse-proxy rule so plain
+   HTTP visitors are redirected automatically:
+   | Field | Value |
+   |-------|-------|
+   | Source Protocol | HTTP |
+   | Source Hostname | `sail.example.com` |
+   | Source Port | 80 |
+   | Destination Protocol | HTTPS |
+   | Destination Hostname | sail.example.com |
+   | Destination Port | 443 |
+
+   > DSM's "Redirect" mode is not exposed in the reverse-proxy UI; the
+   > destination pointing to the same host on 443 causes DSM to issue a
+   > 301 redirect in practice.
+
+6. **Assign the cert:** Control Panel → Security → Certificate → **Settings**.
+   In the dropdown next to your DDNS hostname, select the Let's Encrypt cert
+   you just created. Also set it as the default if you want it to cover
+   requests that don't match an explicit hostname.
+
+7. **Firewall:** Control Panel → Security → Firewall → **Edit Rules** for the
+   WAN interface:
+   - Allow TCP port 80 (ACME renewal)
+   - Allow TCP port 443 (HTTPS)
+   - Deny all other ports from WAN (keep DSM 5000/5001 closed externally)
+
+### Verify the setup
+
+```bash
+# From your laptop / phone, not the NAS itself:
+curl -v https://sail.example.com/health
+# Expect: {"status":"ok"}  with TLS handshake shown in -v output
+
+# Confirm HTTP redirects to HTTPS:
+curl -I http://sail.example.com/health
+# Expect: HTTP/1.1 301 (or 302) with Location: https://...
+
+# Check the cert is valid and issued by Let's Encrypt:
+curl -v https://sail.example.com/health 2>&1 | grep -E 'issuer|subject'
+```
 
 Now `https://sail.example.com/calendar.ics?profile=brian-dinghy` is the URL
 friends paste into Google Calendar → **Other calendars → + → From URL**.
@@ -200,3 +255,6 @@ sudo docker compose exec db pg_dump -U sailsoon sailsoon \
 | Empty `/conditions` response | `ingest` hasn't run yet. `sudo docker compose exec api sailsoon ingest-all` to trigger manually. |
 | Google Calendar not refreshing ICS | Google polls on its own (hours-long) schedule. You can force re-fetch by unsubscribing and resubscribing, but normal drift is expected. |
 | Reverse-proxy gives 502 | Port mismatch — override file maps to `8765`; check the proxy destination. |
+| Let's Encrypt cert request fails | Port 80 not forwarded on your router, or the DDNS hostname doesn't resolve to your WAN IP yet (wait a few minutes after adding DDNS). |
+| Browser shows "certificate not trusted" / NET::ERR_CERT_AUTHORITY_INVALID | Let's Encrypt cert not assigned to the reverse-proxy hostname. Go to Control Panel → Security → Certificate → Settings and set it explicitly. |
+| `/docs` WebSocket errors over HTTPS | Missing WebSocket custom headers on the reverse-proxy rule. Open the rule, Custom Header tab, click Create → WebSocket. |
