@@ -8,6 +8,14 @@
 #   ANZ335 = Long Island Sound East of New Haven CT
 
 locations:
+  - id: stony_brook
+    name: "Stony Brook, NY (Central LIS)"
+    tide_station: "8512354"   # Port Jefferson, NY — verify at tidesandcurrents.noaa.gov
+    marine_zone: "ANZ330"
+    latitude: 40.930
+    longitude: -73.148
+    timezone: "America/New_York"
+
   - id: kings_point
     name: "Kings Point, NY (Western LIS)"
     tide_station: "8516945"
