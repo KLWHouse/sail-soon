@@ -8,6 +8,14 @@
 #   ANZ335 = Long Island Sound East of New Haven CT
 
 locations:
+  - id: northport
+    name: "Northport Harbor, NY (Central LIS)"
+    tide_station: "8515586"
+    marine_zone: "ANZ330"
+    latitude: 40.902
+    longitude: -73.343
+    timezone: "America/New_York"
+
   - id: stony_brook
     name: "Stony Brook, NY (Central LIS)"
     tide_station: "8514560"   # Port Jefferson, NY
