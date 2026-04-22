@@ -50,13 +50,21 @@ def ingest_all(
     location: Optional[list[str]] = typer.Option(None, "--location", "-l"),
     days: int = typer.Option(7, "--days", "-d"),
 ) -> None:
-    """Run everything in the right order: sync → tides → marine → weather."""
+    """Run everything in the right order: sync → tides → marine → weather.
+
+    Failures in any one subsystem are logged but don't abort the others —
+    an NWS outage shouldn't block tide/weather refresh."""
     sync_locations()
-    out = {
-        "tides": ingest_tides(location, days),
-        "marine": ingest_marine(location),
-        "weather": ingest_openmeteo(location, days),
-    }
+    out: dict[str, object] = {}
+    for name, fn in [
+        ("tides", lambda: ingest_tides(location, days)),
+        ("marine", lambda: ingest_marine(location)),
+        ("weather", lambda: ingest_openmeteo(location, days)),
+    ]:
+        try:
+            out[name] = fn()
+        except Exception as err:  # noqa: BLE001
+            out[name] = {"error": f"{type(err).__name__}: {err}"}
     typer.echo(json.dumps(out))
 
 

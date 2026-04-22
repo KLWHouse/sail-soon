@@ -13,8 +13,10 @@ from ._http import client
 
 # NWS zone forecast endpoint. Returns JSON with a "periods" array; each period
 # has a name, detailed forecast text, and start/end times.
+# Note: marine zones (ANZxxx etc.) use the "coastal" zone type, not "forecast"
+# — that type is land-only and returns 404 for marine IDs.
 # https://www.weather.gov/documentation/services-web-api
-BASE_URL = "https://api.weather.gov/zones/forecast/{zone}/forecast"
+BASE_URL = "https://api.weather.gov/zones/coastal/{zone}/forecast"
 
 HAZARD_PATTERNS = [
     "Small Craft Advisory",
