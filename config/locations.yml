@@ -10,7 +10,7 @@
 locations:
   - id: stony_brook
     name: "Stony Brook, NY (Central LIS)"
-    tide_station: "8512354"   # Port Jefferson, NY — verify at tidesandcurrents.noaa.gov
+    tide_station: "8514560"   # Port Jefferson, NY
     marine_zone: "ANZ330"
     latitude: 40.930
     longitude: -73.148
