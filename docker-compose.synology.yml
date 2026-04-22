@@ -7,6 +7,12 @@
 
 services:
   db:
+    # Bind-mount Postgres data under /volume1/docker/... so Synology Hyper
+    # Backup can grab it. You must pre-create the directory with the correct
+    # ownership before `docker compose up`:
+    #
+    #   sudo mkdir -p /volume1/docker/sail-soon/pgdata
+    #   sudo chown 70:70 /volume1/docker/sail-soon/pgdata   # uid 70 = postgres in postgres:16-alpine
     volumes:
       - /volume1/docker/sail-soon/pgdata:/var/lib/postgresql/data
 

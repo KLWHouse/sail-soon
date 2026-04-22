@@ -47,12 +47,18 @@ Package Center, or just upload the repo folder via File Station.
 
 The repo ships `docker-compose.synology.yml` with the NAS-specific bits
 (persistent volume under `/volume1/docker/...`, API bound to loopback for a
-reverse proxy). Copy it into place:
+reverse proxy). Copy it into place and **pre-create the Postgres data
+directory** — bind mounts don't auto-create paths, and Postgres needs the
+right ownership on first start:
 
 ```bash
 cd /volume1/docker/sail-soon
 cp docker-compose.synology.yml docker-compose.override.yml
 $EDITOR docker-compose.override.yml    # set SAILSOON_HTTP_USER_AGENT to your email
+
+# Pre-create the pgdata dir with correct ownership for postgres:16-alpine (uid 70)
+sudo mkdir -p /volume1/docker/sail-soon/pgdata
+sudo chown 70:70 /volume1/docker/sail-soon/pgdata
 ```
 
 > Port **8765** is a free choice — pick anything that doesn't clash with
