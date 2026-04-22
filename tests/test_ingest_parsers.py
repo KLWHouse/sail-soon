@@ -112,33 +112,29 @@ def test_openmeteo_ingester_parses_response():
 
 @respx.mock
 def test_marine_ingester_extracts_hazards():
-    from sailsoon.ingest.marine import BASE_URL, ingest_marine
+    from sailsoon.ingest.marine import ALERTS_URL, ingest_marine
 
-    payload = {
-        "properties": {
-            "periods": [
+    def _alert(zone: str):
+        return {
+            "features": [
                 {
-                    "name": "Tonight",
-                    "startTime": "2026-04-20T18:00:00+00:00",
-                    "endTime": "2026-04-21T06:00:00+00:00",
-                    "detailedForecast": "Small Craft Advisory. NE winds 20 to 25 kt.",
-                },
-                {
-                    "name": "Tuesday",
-                    "startTime": "2026-04-21T06:00:00+00:00",
-                    "endTime": "2026-04-21T18:00:00+00:00",
-                    "detailedForecast": "N winds 10 kt. Seas 2 ft.",
-                },
+                    "properties": {
+                        "event": "Small Craft Advisory",
+                        "headline": f"Small Craft Advisory in effect for {zone}",
+                        "description": "NE winds 20 to 25 kt with gusts up to 30 kt.",
+                        "onset": "2026-04-20T18:00:00+00:00",
+                        "ends": "2026-04-21T06:00:00+00:00",
+                    }
+                }
             ]
         }
-    }
-    respx.get(BASE_URL.format(zone="ANZ330")).mock(return_value=Response(200, json=payload))
-    # Only one of our locations uses ANZ330 in this test run — that's fine; the others will also hit the same mock since multiple locations share ANZ330/ANZ335. Mock both.
-    respx.get(BASE_URL.format(zone="ANZ335")).mock(return_value=Response(200, json=payload))
-    respx.get(BASE_URL.format(zone="ANZ350")).mock(return_value=Response(200, json=payload))
+
+    respx.get(ALERTS_URL).mock(side_effect=lambda req: __import__("httpx").Response(
+        200, json=_alert(dict(req.url.params).get("zone", "?"))
+    ))
 
     counts = ingest_marine(location_ids=["kings_point"])
-    assert counts["kings_point"] == 2
+    assert counts["kings_point"] == 1
 
     from sqlalchemy import select
     from sailsoon.db import session_scope
@@ -146,5 +142,16 @@ def test_marine_ingester_extracts_hazards():
 
     with session_scope() as s:
         rows = s.execute(select(MarineForecast).order_by(MarineForecast.valid_from)).scalars().all()
-        assert "Small Craft Advisory" in rows[0].hazards
-        assert rows[1].hazards == []
+        assert rows[0].hazards == ["Small Craft Advisory"]
+        assert "Small Craft Advisory" in rows[0].headline
+
+
+@respx.mock
+def test_marine_ingester_handles_no_alerts():
+    """Most of the time there are no active hazards — endpoint returns empty features."""
+    from sailsoon.ingest.marine import ALERTS_URL, ingest_marine
+
+    respx.get(ALERTS_URL).mock(return_value=Response(200, json={"features": []}))
+
+    counts = ingest_marine(location_ids=["kings_point"])
+    assert counts["kings_point"] == 0
