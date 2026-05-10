@@ -17,13 +17,22 @@ services:
       - /volume1/docker/sail-soon/pgdata:/var/lib/postgresql/data
 
   api:
-    # Bind to loopback on the NAS; DSM's reverse proxy forwards from :443 to
-    # :8765. Drop the "127.0.0.1:" prefix if you want LAN access without a
-    # reverse proxy.
+    # Loopback-only: DSM's reverse proxy forwards :443 → :8765.
+    # The base compose.yml intentionally has no ports mapping so this is the
+    # only binding — port 8000 is NOT reachable externally.
+    # For direct LAN access without a proxy, change to "8765:8000".
     ports:
       - "127.0.0.1:8765:8000"
+    # --proxy-headers tells uvicorn to trust X-Forwarded-Proto/For from DSM's
+    # reverse proxy so the app sees the real client IP and scheme (https).
+    # --forwarded-allow-ips=* is safe here because the port is loopback-only.
+    command: >
+      sh -c "alembic upgrade head && sailsoon sync &&
+             uvicorn sailsoon.api:app --host 0.0.0.0 --port 8000
+             --proxy-headers --forwarded-allow-ips='*'"
     environment:
       # NWS rejects generic UAs. Put a real contact email here.
       SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"
 
-  ingest: {}
+  ingest:
+    restart: unless-stopped
