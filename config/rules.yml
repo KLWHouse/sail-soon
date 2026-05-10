@@ -51,6 +51,28 @@ rules:
     fail_at: 70
     weight: 1.0
 
+  air_temp:
+    # Comfort band in Celsius. Full score 10–28°C (50–82°F); ramps to zero
+    # at freezing and at 38°C. Low weight — cold hands are annoying, not dangerous.
+    type: trapezoid
+    source: air_temp_c
+    low_zero: 0
+    low_full: 10
+    high_full: 28
+    high_zero: 38
+    weight: 0.5
+
+  cloud_cover:
+    # Less cloud = more sun = better day on the water. Full score 0–30%,
+    # ramps to zero at 90%+ overcast. Low weight — overcast sailing is still sailing.
+    type: trapezoid
+    source: cloud_cover_pct
+    low_zero: -1
+    low_full: 0
+    high_full: 30
+    high_zero: 90
+    weight: 0.3
+
   small_craft_advisory:
     # Kill the score if NWS marine zone has a small craft advisory this hour.
     type: nws_hazard

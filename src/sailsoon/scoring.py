@@ -81,6 +81,8 @@ def _score_hour(
         "wind_gust_kt": h.wind_gust_kt,
         "wave_height_m": h.wave_height_m,
         "precip_prob_pct": h.precip_prob_pct,
+        "air_temp_c": h.air_temp_c,
+        "cloud_cover_pct": h.cloud_cover_pct,
         "hazards": hazards_for_hour,
     }
     for name, rule in rules.rules.items():
