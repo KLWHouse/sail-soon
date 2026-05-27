@@ -36,3 +36,6 @@ services:
 
   ingest:
     restart: unless-stopped
+    environment:
+      # NWS rejects generic UAs. Keep this in sync with the api service.
+      SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"

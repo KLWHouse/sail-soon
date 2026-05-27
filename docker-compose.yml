@@ -25,6 +25,7 @@ services:
         condition: service_healthy
     environment:
       SAILSOON_DATABASE_URL: postgresql+psycopg://sailsoon:sailsoon@db:5432/sailsoon
+      SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"
     command: >
       sh -c "alembic upgrade head && sailsoon sync && uvicorn sailsoon.api:app --host 0.0.0.0 --port 8000"
 
@@ -36,6 +37,7 @@ services:
         condition: service_started
     environment:
       SAILSOON_DATABASE_URL: postgresql+psycopg://sailsoon:sailsoon@db:5432/sailsoon
+      SAILSOON_HTTP_USER_AGENT: "sail-soon/0.1 (you@example.com)"
     entrypoint: ["sh", "-c"]
     command:
       - |
