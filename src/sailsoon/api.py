@@ -6,14 +6,14 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .calendar_ics import build_calendar, verdict_for_window
 from .config import Location as LocationCfg
 from .config import RuleSet, get_location, load_locations, load_rules
 from .db import get_sessionmaker
-from .models import MarineForecast, TidePrediction
+from .models import HourlyForecast, MarineForecast, TidePrediction
 from .profiles import (
     ProfileConfig,
     ProfileCreated,
@@ -142,6 +142,23 @@ class TideOut(BaseModel):
     type: str | None
 
 
+class LocationIngestStatus(BaseModel):
+    location_id: str
+    latest_hourly_time: datetime | None
+    latest_hourly_fetched_at: datetime | None
+    hourly_rows: int
+    latest_tide_time: datetime | None
+    tide_rows: int
+    latest_marine_valid_to: datetime | None
+    latest_marine_fetched_at: datetime | None
+    marine_rows: int
+
+
+class IngestStatus(BaseModel):
+    generated_at: datetime
+    locations: list[LocationIngestStatus]
+
+
 # ---------- helpers ----------
 
 
@@ -239,6 +256,47 @@ def locations() -> list[LocationOut]:
     return [LocationOut.from_cfg(l) for l in load_locations()]
 
 
+@app.get("/ingest-status", response_model=IngestStatus)
+def ingest_status(db: Session = Depends(get_db)) -> IngestStatus:
+    """Current database freshness by location."""
+    statuses: list[LocationIngestStatus] = []
+    for loc in load_locations():
+        marine_count, latest_marine_valid_to, latest_marine_fetched_at = db.execute(
+            select(
+                func.count(MarineForecast.id),
+                func.max(MarineForecast.valid_to),
+                func.max(MarineForecast.fetched_at),
+            ).where(MarineForecast.location_id == loc.id)
+        ).one()
+        tide_count, latest_tide_time = db.execute(
+            select(
+                func.count(TidePrediction.id),
+                func.max(TidePrediction.t),
+            ).where(TidePrediction.location_id == loc.id)
+        ).one()
+        forecast_count, latest_forecast_time, latest_forecast_fetched_at = db.execute(
+            select(
+                func.count(HourlyForecast.id),
+                func.max(HourlyForecast.t),
+                func.max(HourlyForecast.fetched_at),
+            ).where(HourlyForecast.location_id == loc.id)
+        ).one()
+        statuses.append(
+            LocationIngestStatus(
+                location_id=loc.id,
+                latest_hourly_time=latest_forecast_time,
+                latest_hourly_fetched_at=latest_forecast_fetched_at,
+                hourly_rows=forecast_count,
+                latest_tide_time=latest_tide_time,
+                tide_rows=tide_count,
+                latest_marine_valid_to=latest_marine_valid_to,
+                latest_marine_fetched_at=latest_marine_fetched_at,
+                marine_rows=marine_count,
+            )
+        )
+    return IngestStatus(generated_at=datetime.now(timezone.utc), locations=statuses)
+
+
 @app.get("/conditions", response_model=list[HourOut])
 def conditions(
     location: str | None = Query(None, description="Location id, e.g. 'kings_point'."),
@@ -321,6 +379,8 @@ def tides(
     "/calendar.ics",
     responses={200: {"content": {"text/calendar": {}}}},
 )
+@app.get("/calendar", include_in_schema=False)
+@app.get("/ics", include_in_schema=False)
 def calendar_ics(
     location: list[str] | None = Query(
         None, description="Location id(s). Repeat for multi-location calendars."

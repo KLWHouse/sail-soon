@@ -65,6 +65,16 @@ def test_locations_has_kings_point(client):
     assert "kings_point" in ids
 
 
+def test_ingest_status_reports_forecast_freshness(client):
+    r = client.get("/ingest-status")
+    assert r.status_code == 200
+    body = r.json()
+    kings_point = next(l for l in body["locations"] if l["location_id"] == "kings_point")
+    assert kings_point["hourly_rows"] == 24
+    assert kings_point["latest_hourly_time"] is not None
+    assert kings_point["latest_hourly_fetched_at"] is not None
+
+
 def test_conditions_returns_hours(client):
     r = client.get("/conditions", params={"location": "kings_point", "when": "today"})
     assert r.status_code == 200
@@ -89,6 +99,14 @@ def test_calendar_ics_serves_text_calendar(client):
     # Seeded data is steady 12kt wind, so at least one window should be emitted.
     assert "BEGIN:VEVENT" in body
     assert "Kings Point" in body
+
+
+@pytest.mark.parametrize("path", ["/calendar", "/ics"])
+def test_calendar_aliases_serve_text_calendar(client, path):
+    r = client.get(path, params={"location": "kings_point", "days": 1})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/calendar")
+    assert r.text.startswith("BEGIN:VCALENDAR")
 
 
 def test_calendar_ics_multi_location(client):
