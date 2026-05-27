@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from sailsoon.config import Rule, RuleSet
-from sailsoon.scoring import HourReport, find_windows, _ceiling, _trapezoid
+from sailsoon.scoring import HourReport, find_windows, _ceiling, _score_hour, _trapezoid
 
 
 def _rule(**kw) -> Rule:
@@ -40,6 +40,46 @@ def test_ceiling_monotonic():
 def test_ceiling_none_is_neutral():
     r = _rule(type="ceiling", source="wave_height_m", warn_at=0.8, fail_at=1.5)
     assert _ceiling(None, r) == 0.75
+
+
+def test_air_temperature_rule_uses_actual_hourly_temperature():
+    rules = RuleSet(
+        rules={
+            "air_temp": _rule(
+                type="trapezoid",
+                source="air_temp_c",
+                low_zero=0,
+                low_full=10,
+                high_full=28,
+                high_zero=38,
+                weight=1.0,
+            )
+        }
+    )
+    cold = SimpleNamespace(
+        wind_speed_kt=None,
+        wind_gust_kt=None,
+        wave_height_m=None,
+        precip_prob_pct=None,
+        air_temp_c=-1.0,
+        cloud_cover_pct=None,
+    )
+    comfortable = SimpleNamespace(
+        wind_speed_kt=None,
+        wind_gust_kt=None,
+        wave_height_m=None,
+        precip_prob_pct=None,
+        air_temp_c=18.0,
+        cloud_cover_pct=None,
+    )
+
+    cold_score, cold_reasons = _score_hour(cold, [], rules)
+    comfortable_score, comfortable_reasons = _score_hour(comfortable, [], rules)
+
+    assert cold_score == 0.0
+    assert cold_reasons["air_temp"] == 0.0
+    assert comfortable_score == 1.0
+    assert comfortable_reasons["air_temp"] == 1.0
 
 
 def _hr(t: datetime, score: float, daylight: bool = True) -> HourReport:

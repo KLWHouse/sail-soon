@@ -30,6 +30,7 @@ def _window_event(loc: Location, w: SailWindow, verdict: str) -> Event:
     wind_vals = [h.raw.get("wind_speed_kt") for h in hours if h.raw.get("wind_speed_kt") is not None]
     gust_vals = [h.raw.get("wind_gust_kt") for h in hours if h.raw.get("wind_gust_kt") is not None]
     wave_vals = [h.raw.get("wave_height_m") for h in hours if h.raw.get("wave_height_m") is not None]
+    temp_vals = [h.raw.get("air_temp_c") for h in hours if h.raw.get("air_temp_c") is not None]
     hazards = sorted({hz for h in hours for hz in h.hazards})
 
     lines = [
@@ -43,6 +44,11 @@ def _window_event(loc: Location, w: SailWindow, verdict: str) -> Event:
         lines.append(f"Gusts to: {max(gust_vals):.0f} kt")
     if wave_vals:
         lines.append(f"Waves to: {max(wave_vals):.1f} m")
+    if temp_vals:
+        low_c, high_c = min(temp_vals), max(temp_vals)
+        low_f = low_c * 9 / 5 + 32
+        high_f = high_c * 9 / 5 + 32
+        lines.append(f"Air temp: {low_c:.0f}-{high_c:.0f} C ({low_f:.0f}-{high_f:.0f} F)")
     if hazards:
         lines.append("Hazards: " + ", ".join(hazards))
     e.description = "\n".join(lines)

@@ -170,6 +170,7 @@ def _window_summary(w: SailWindow) -> str:
     wind_vals = [h.raw.get("wind_speed_kt") for h in hours if h.raw.get("wind_speed_kt") is not None]
     gust_vals = [h.raw.get("wind_gust_kt") for h in hours if h.raw.get("wind_gust_kt") is not None]
     wave_vals = [h.raw.get("wave_height_m") for h in hours if h.raw.get("wave_height_m") is not None]
+    temp_vals = [h.raw.get("air_temp_c") for h in hours if h.raw.get("air_temp_c") is not None]
     parts = [f"{round(w.duration_hours)}h window", f"score {w.avg_score:.2f}"]
     if wind_vals:
         parts.append(f"wind {min(wind_vals):.0f}-{max(wind_vals):.0f} kt")
@@ -177,6 +178,8 @@ def _window_summary(w: SailWindow) -> str:
         parts.append(f"gusts to {max(gust_vals):.0f} kt")
     if wave_vals:
         parts.append(f"waves to {max(wave_vals):.1f} m")
+    if temp_vals:
+        parts.append(f"air {min(temp_vals):.0f}-{max(temp_vals):.0f} C")
     return ", ".join(parts) + "."
 
 
