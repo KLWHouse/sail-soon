@@ -99,6 +99,7 @@ def test_calendar_ics_serves_text_calendar(client):
     # Seeded data is steady 12kt wind, so at least one window should be emitted.
     assert "BEGIN:VEVENT" in body
     assert "Kings Point" in body
+    assert "Wind direction: SW (220 deg)" in body
 
 
 @pytest.mark.parametrize("path", ["/calendar", "/ics"])

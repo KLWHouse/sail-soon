@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -162,18 +163,38 @@ class IngestStatus(BaseModel):
 # ---------- helpers ----------
 
 
+def _mean_wind_direction(degrees: list[float | None]) -> float | None:
+    vals = [d for d in degrees if d is not None]
+    if not vals:
+        return None
+    sin_sum = sum(math.sin(math.radians(d)) for d in vals)
+    cos_sum = sum(math.cos(math.radians(d)) for d in vals)
+    if abs(sin_sum) < 1e-9 and abs(cos_sum) < 1e-9:
+        return None
+    return math.degrees(math.atan2(sin_sum, cos_sum)) % 360
+
+
+def _compass_direction(degrees: float) -> str:
+    sectors = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    return sectors[int((degrees + 22.5) // 45) % len(sectors)]
+
+
 def _window_summary(w: SailWindow) -> str:
     # Compact English description so agents don't have to re-reason from raw.
     hours = w.hours
     if not hours:
         return "No data."
     wind_vals = [h.raw.get("wind_speed_kt") for h in hours if h.raw.get("wind_speed_kt") is not None]
+    wind_dir_vals = [h.raw.get("wind_dir_deg") for h in hours if h.raw.get("wind_dir_deg") is not None]
     gust_vals = [h.raw.get("wind_gust_kt") for h in hours if h.raw.get("wind_gust_kt") is not None]
     wave_vals = [h.raw.get("wave_height_m") for h in hours if h.raw.get("wave_height_m") is not None]
     temp_vals = [h.raw.get("air_temp_c") for h in hours if h.raw.get("air_temp_c") is not None]
     parts = [f"{round(w.duration_hours)}h window", f"score {w.avg_score:.2f}"]
     if wind_vals:
         parts.append(f"wind {min(wind_vals):.0f}-{max(wind_vals):.0f} kt")
+    wind_dir = _mean_wind_direction(wind_dir_vals)
+    if wind_dir is not None:
+        parts.append(f"from {_compass_direction(wind_dir)} ({wind_dir:.0f} deg)")
     if gust_vals:
         parts.append(f"gusts to {max(gust_vals):.0f} kt")
     if wave_vals:
